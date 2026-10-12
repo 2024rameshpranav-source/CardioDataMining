@@ -1,4 +1,3 @@
-
 import json
 import joblib
 import streamlit as st
@@ -17,32 +16,44 @@ st.set_page_config(
 BASE_DIR = Path(__file__).parent
 MODEL_PATH = BASE_DIR / "cardio_model.pkl"
 METADATA_PATH = BASE_DIR / "model_metadata.json"
+DATA_PATH = BASE_DIR / "cardio_cleaned.csv"
 
 st.title("❤️ Cardiovascular Disease Analysis")
 st.caption("Data Mining Mini Project | CA2")
+
 
 # ---------------- LOAD SAVED MODEL ----------------
 @st.cache_resource
 def load_model():
     return joblib.load(MODEL_PATH)
 
+
 @st.cache_data
 def load_metadata():
-    with open(METADATA_PATH, "r") as file:
+    with open(METADATA_PATH, "r", encoding="utf-8") as file:
         return json.load(file)
+
+
+# ---------------- LOAD CLEANED DATASET ----------------
+@st.cache_data
+def load_dataset():
+    return pd.read_csv(DATA_PATH)
+
 
 try:
     model = load_model()
     metadata = load_metadata()
-except FileNotFoundError:
+except FileNotFoundError as error:
     st.error(
-        "Model files not found. Place cardio_model.pkl "
-        "and model_metadata.json beside app.py."
+        f"Required model file not found: {error.filename}. "
+        "Ensure cardio_model.pkl and model_metadata.json "
+        "are present beside app.py."
     )
     st.stop()
 except Exception as error:
-    st.error(f"Could not load the model files: {error}")
+    st.error(f"Could not load model files: {error}")
     st.stop()
+
 
 # ---------------- SIDEBAR ----------------
 page = st.sidebar.radio(
@@ -55,15 +66,16 @@ page = st.sidebar.radio(
     ]
 )
 
+
 # ---------------- OVERVIEW ----------------
 if page == "Overview":
     st.header("Project Overview")
 
     st.write(
-        "This project applies classification algorithms to "
-        "a public cardiovascular disease dataset. It demonstrates "
-        "data preprocessing, exploratory analysis, model evaluation "
-        "and prediction using a trained Random Forest classifier."
+        "This project applies data mining classification techniques "
+        "to a public cardiovascular disease dataset. It demonstrates "
+        "data preprocessing, exploratory data analysis, model training, "
+        "hyperparameter tuning, evaluation, and interactive prediction."
     )
 
     c1, c2, c3 = st.columns(3)
@@ -89,74 +101,160 @@ if page == "Overview":
         "Educational project only. Predictions are not medical diagnoses."
     )
 
+
 # ---------------- DATA ANALYSIS ----------------
 elif page == "Data Analysis":
     st.header("Exploratory Data Analysis")
 
     st.write(
-        "Upload the cleaned CSV used during model training "
-        "to explore its distributions and relationships."
+        "Explore the cleaned cardiovascular dataset. "
+        "The CSV is loaded automatically from the project repository."
     )
 
-    uploaded_csv = st.file_uploader(
-        "Upload cleaned dataset CSV",
-        type=["csv"]
+    if not DATA_PATH.exists():
+        st.error(
+            "cardio_cleaned.csv was not found. "
+            "Make sure the file is committed to GitHub in the same "
+            "directory as app.py."
+        )
+        st.stop()
+
+    try:
+        data = load_dataset()
+    except Exception as error:
+        st.error(f"Could not read cardio_cleaned.csv: {error}")
+        st.stop()
+
+    required_columns = {
+        "cardio",
+        "age_years",
+        "height",
+        "weight",
+        "ap_hi",
+        "ap_lo",
+        "cholesterol",
+        "gluc"
+    }
+
+    missing_columns = required_columns.difference(data.columns)
+
+    if missing_columns:
+        st.error(
+            "The cleaned dataset is missing these required columns: "
+            + ", ".join(sorted(missing_columns))
+        )
+        st.stop()
+
+    # Dataset summary
+    st.subheader("Dataset Summary")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Dataset records", f"{len(data):,}")
+    c2.metric("Number of columns", f"{len(data.columns):,}")
+    c3.metric("Missing values", f"{int(data.isnull().sum().sum()):,}")
+
+    with st.expander("View dataset information"):
+        summary = pd.DataFrame({
+            "Column": data.columns,
+            "Data Type": data.dtypes.astype(str).values,
+            "Missing Values": data.isnull().sum().values,
+            "Unique Values": data.nunique().values
+        })
+        st.dataframe(summary, use_container_width=True)
+
+    # Target distribution
+    st.subheader("Target Distribution")
+
+    counts = data["cardio"].value_counts().sort_index()
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    counts.plot(kind="bar", ax=ax)
+    ax.set_title("Cardiovascular Disease Class Distribution")
+    ax.set_xlabel("Cardio (0 = No, 1 = Yes)")
+    ax.set_ylabel("Number of Records")
+    ax.set_xticks(range(len(counts)))
+    ax.set_xticklabels([str(value) for value in counts.index], rotation=0)
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+
+    # Age distribution
+    st.subheader("Age Distribution")
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.histplot(
+        data=data,
+        x="age_years",
+        hue="cardio",
+        bins=25,
+        element="step",
+        ax=ax
+    )
+    ax.set_title("Age Distribution by Cardiovascular Disease Class")
+    ax.set_xlabel("Age (years)")
+    ax.set_ylabel("Number of Records")
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+
+    # Correlation heatmap
+    st.subheader("Feature Correlation")
+
+    numeric_data = data.select_dtypes(include="number")
+    correlation = numeric_data.corr()
+
+    fig, ax = plt.subplots(figsize=(11, 7))
+    sns.heatmap(
+        correlation,
+        cmap="coolwarm",
+        center=0,
+        annot=False,
+        ax=ax
+    )
+    ax.set_title("Correlation Heatmap")
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+
+    # Additional feature exploration
+    st.subheader("Explore Individual Features")
+
+    available_features = [
+        "age_years",
+        "height",
+        "weight",
+        "ap_hi",
+        "ap_lo",
+        "cholesterol",
+        "gluc"
+    ]
+
+    selected_feature = st.selectbox(
+        "Select a feature",
+        available_features
     )
 
-    if uploaded_csv is not None:
-        data = pd.read_csv(uploaded_csv)
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.histplot(
+        data=data,
+        x=selected_feature,
+        bins=25,
+        kde=True,
+        ax=ax
+    )
+    ax.set_title(f"Distribution of {selected_feature}")
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
 
-        required_columns = {
-            "cardio", "age_years", "height", "weight",
-            "ap_hi", "ap_lo", "cholesterol", "gluc"
-        }
+    # Dataset preview
+    with st.expander("View cleaned dataset preview"):
+        st.dataframe(data.head(20), use_container_width=True)
 
-        if not required_columns.issubset(data.columns):
-            st.error(
-                "The CSV is missing required columns. "
-                "Upload the cleaned dataset used for this project."
-            )
-        else:
-            st.metric("Dataset records", f"{len(data):,}")
+    st.caption(
+        "Visualizations use the cleaned dataset stored in the repository."
+    )
 
-            st.subheader("Target Distribution")
-            counts = data["cardio"].value_counts().sort_index()
-
-            fig, ax = plt.subplots(figsize=(7, 4))
-            counts.plot(kind="bar", ax=ax)
-            ax.set_title("Cardiovascular Disease Class Distribution")
-            ax.set_xlabel("Cardio (0 = No, 1 = Yes)")
-            ax.set_ylabel("Records")
-            st.pyplot(fig)
-            plt.close(fig)
-
-            st.subheader("Age Distribution")
-            fig, ax = plt.subplots(figsize=(8, 4))
-            sns.histplot(
-                data=data,
-                x="age_years",
-                hue="cardio",
-                bins=25,
-                element="step",
-                ax=ax
-            )
-            ax.set_title("Age Distribution by Target Class")
-            st.pyplot(fig)
-            plt.close(fig)
-
-            st.subheader("Feature Correlation")
-            fig, ax = plt.subplots(figsize=(10, 6))
-            sns.heatmap(
-                data.corr(numeric_only=True),
-                cmap="coolwarm",
-                center=0,
-                ax=ax
-            )
-            st.pyplot(fig)
-            plt.close(fig)
-
-            with st.expander("View dataset preview"):
-                st.dataframe(data.head(20), use_container_width=True)
 
 # ---------------- MODEL EVALUATION ----------------
 elif page == "Model Evaluation":
@@ -165,6 +263,7 @@ elif page == "Model Evaluation":
     metrics = metadata["test_metrics"]
 
     c1, c2, c3, c4 = st.columns(4)
+
     c1.metric("Accuracy", f'{metrics["accuracy"]:.2%}')
     c2.metric("Precision", f'{metrics["precision"]:.2%}')
     c3.metric("Recall", f'{metrics["recall"]:.2%}')
@@ -173,13 +272,25 @@ elif page == "Model Evaluation":
     st.subheader("Selected Model")
     st.write(metadata["model_name"])
 
+    if "best_cv_f1" in metadata:
+        st.metric(
+            "Best Cross-Validation F1-score",
+            f'{metadata["best_cv_f1"]:.4f}'
+        )
+
     st.subheader("Best Hyperparameters")
     st.json(metadata["best_parameters"])
 
     st.write(
-        "These metrics come from the held-out test evaluation "
-        "recorded during model development."
+        "These metrics are loaded from the saved metadata generated "
+        "during model development and refer to the held-out test set."
     )
+
+    st.warning(
+        "The model's performance is intended for an academic demonstration "
+        "and does not establish clinical reliability."
+    )
+
 
 # ---------------- PREDICTION ----------------
 elif page == "Prediction":
@@ -192,6 +303,7 @@ elif page == "Prediction":
 
     with st.form("prediction_form"):
         age_years = st.slider("Age (years)", 29, 65, 45)
+
         gender = st.selectbox(
             "Gender code",
             options=[1, 2],
@@ -201,25 +313,53 @@ elif page == "Prediction":
         )
 
         height = st.number_input(
-            "Height (cm)", 120.0, 220.0, 165.0
+            "Height (cm)",
+            min_value=120.0,
+            max_value=220.0,
+            value=165.0
         )
+
         weight = st.number_input(
-            "Weight (kg)", 30.0, 200.0, 70.0
+            "Weight (kg)",
+            min_value=30.0,
+            max_value=200.0,
+            value=70.0
         )
+
         ap_hi = st.number_input(
             "Systolic blood pressure",
-            min_value=70, max_value=250, value=120
+            min_value=70,
+            max_value=250,
+            value=120
         )
+
         ap_lo = st.number_input(
             "Diastolic blood pressure",
-            min_value=40, max_value=200, value=80
+            min_value=40,
+            max_value=200,
+            value=80
         )
+
         cholesterol = st.selectbox(
-            "Cholesterol level", [1, 2, 3]
+            "Cholesterol level",
+            [1, 2, 3],
+            format_func=lambda x: {
+                1: "Normal (1)",
+                2: "Above normal (2)",
+                3: "Well above normal (3)"
+            }[x]
         )
+
         gluc = st.selectbox(
-            "Glucose level", [1, 2, 3]
+            "Glucose level",
+            [1, 2, 3],
+            format_func=lambda x: {
+                1: "Normal (1)",
+                2: "Above normal (2)",
+                3: "Well above normal (3)"
+            }[x]
         )
+
         smoke = st.selectbox("Smokes", [0, 1])
         alco = st.selectbox("Consumes alcohol", [0, 1])
         active = st.selectbox("Physically active", [0, 1])
@@ -233,7 +373,6 @@ elif page == "Prediction":
                 "than diastolic pressure for this demonstration."
             )
         else:
-            # Follow the exact feature order used during training
             input_values = {
                 "gender": gender,
                 "height": height,
@@ -250,22 +389,37 @@ elif page == "Prediction":
 
             feature_order = metadata["features"]
 
-            input_df = pd.DataFrame(
-                [[input_values[col] for col in feature_order]],
-                columns=feature_order
-            )
+            missing_features = [
+                feature for feature in feature_order
+                if feature not in input_values
+            ]
 
-            prediction = int(model.predict(input_df)[0])
-
-            if prediction == 1:
+            if missing_features:
                 st.error(
-                    "Model output: Cardiovascular disease class (1)"
+                    "Prediction cannot proceed because the form is missing "
+                    "model features: " + ", ".join(missing_features)
                 )
             else:
-                st.success(
-                    "Model output: No cardiovascular disease class (0)"
+                input_df = pd.DataFrame(
+                    [[input_values[col] for col in feature_order]],
+                    columns=feature_order
                 )
 
-            st.caption(
-                "This is a model classification, not a medical diagnosis."
-            )
+                try:
+                    prediction = int(model.predict(input_df)[0])
+
+                    if prediction == 1:
+                        st.error(
+                            "Model output: Cardiovascular disease class (1)"
+                        )
+                    else:
+                        st.success(
+                            "Model output: No cardiovascular disease class (0)"
+                        )
+
+                    st.caption(
+                        "This is a model classification, not a medical diagnosis."
+                    )
+
+                except Exception as error:
+                    st.error(f"Prediction failed: {error}")
