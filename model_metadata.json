@@ -1,0 +1,32 @@
+{
+    "model_name": "Tuned Random Forest",
+    "features": [
+        "gender",
+        "height",
+        "weight",
+        "ap_hi",
+        "ap_lo",
+        "cholesterol",
+        "gluc",
+        "smoke",
+        "alco",
+        "active",
+        "age_years"
+    ],
+    "target": "cardio",
+    "test_metrics": {
+        "accuracy": 0.7297078519390684,
+        "precision": 0.7478708018640527,
+        "recall": 0.6886652855874519,
+        "f1_score": 0.7170479932208612
+    },
+    "best_parameters": {
+        "n_estimators": 200,
+        "min_samples_split": 10,
+        "min_samples_leaf": 2,
+        "max_samples": 0.7,
+        "max_features": 0.7,
+        "max_depth": 10
+    },
+    "best_cv_f1": 0.7216310920319656
+}
